@@ -34,8 +34,11 @@ class HTTPRequest(object):
 
 class HTTPClient(object):
     def connect(self, host, port):
-        sock = socket.create_connection( (host,port), 5 )
-        return sock
+        try:
+            return socket.create_connection( (host,port), 5 )
+        except:
+            print "Failed to connect to webserver"
+            return None
 
     def get_code(self, data):
         return int( data.split(" ")[1] )
@@ -64,17 +67,20 @@ class HTTPClient(object):
     def connect_and_parse_url( self, url ):
         url = url if url.startswith( "http" ) else "http://" + url
         parsedurl = urlparse.urlparse(url)
-		
+        
         port = parsedurl.port if parsedurl.port else 80
         host = parsedurl.hostname
         path = parsedurl.path if parsedurl.path else "/"
-		
+        
         sock = self.connect( host, port )
         
         return sock, host, path
 
     def GET(self, url, args=None):
-        sock, host, path = self.connect_and_parse_url( url )   
+        sock, host, path = self.connect_and_parse_url( url )
+        
+        if not sock:
+            return HTTPRequest( 404, "" )
         
         data = "GET %s HTTP/1.1\r\n" % path
         data += "host: %s\r\n" % host
@@ -87,6 +93,9 @@ class HTTPClient(object):
 
     def POST(self, url, args=None):
         sock, host, path = self.connect_and_parse_url( url )
+        
+        if not sock:
+            return HTTPRequest( 404, "" )
         
         header = "POST %s HTTP/1.1\r\n" % path
         header += "host: %s\r\n" % host
@@ -107,9 +116,12 @@ class HTTPClient(object):
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
-            return self.POST( url, args )
+            result = self.POST( url, args )
         else:
-            return self.GET( url, args )
+            result = self.GET( url, args )
+			
+        print "Resulting status code(200 means OK): %i" % result.code
+        return result
     
 if __name__ == "__main__":
     client = HTTPClient()
