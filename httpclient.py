@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
+# Copyright 2014 Remco Uittenbogerd
 # Copyright 2013 Abram Hindle
 # 
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +21,8 @@
 
 import sys
 import socket
-import re
-# you may use urllib to encode data appropriately
 import urllib
+import urlparse
 
 def help():
     print "httpclient.py [GET/POST] [URL]\n"
@@ -33,22 +33,23 @@ class HTTPRequest(object):
         self.body = body
 
 class HTTPClient(object):
-    #def get_host_port(self,url):
-
     def connect(self, host, port):
-        # use sockets!
-        return None
+        sock = socket.create_connection( (host,port), 5 )
+        return sock
 
     def get_code(self, data):
-        return None
+        return int( data.split(" ")[1] )
 
     def get_headers(self,data):
-        return None
+        return data.split("\r\n\r\n")[0]
 
     def get_body(self, data):
-        return None
+        split = data.split("\r\n\r\n")
+        if len(split) >= 2:
+            return split[1]
+        else:
+            return None
 
-    # read everything from the socket
     def recvall(self, sock):
         buffer = bytearray()
         done = False
@@ -59,16 +60,50 @@ class HTTPClient(object):
             else:
                 done = not part
         return str(buffer)
+        
+    def connect_and_parse_url( self, url ):
+        url = url if url.startswith( "http" ) else "http://" + url
+        parsedurl = urlparse.urlparse(url)
+		
+        port = parsedurl.port if parsedurl.port else 80
+        host = parsedurl.hostname
+        path = parsedurl.path if parsedurl.path else "/"
+		
+        sock = self.connect( host, port )
+        
+        return sock, host, path
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
-        return HTTPRequest(code, body)
+        sock, host, path = self.connect_and_parse_url( url )   
+        
+        data = "GET %s HTTP/1.1\r\n" % path
+        data += "host: %s\r\n" % host
+        data += "connection: close\r\n\r\n"
+        
+        sock.sendall( data )
+        data = self.recvall( sock )
+        
+        return HTTPRequest( self.get_code( data ), self.get_body( data ) )
 
     def POST(self, url, args=None):
-        code = 500
+        sock, host, path = self.connect_and_parse_url( url )
+        
+        header = "POST %s HTTP/1.1\r\n" % path
+        header += "host: %s\r\n" % host
+        header += "content-type: application/x-www-form-urlencoded\r\n"
+        header += "connection: close\r\n"
+        
         body = ""
-        return HTTPRequest(code, body)
+        if args:
+            args = urllib.urlencode(args)
+            header += "content-length: %i\r\n" % len(args)
+            body += args
+        
+        data = "%s\r\n%s" % ( header, body )
+        sock.sendall( data )
+        data = self.recvall( sock )
+        
+        return HTTPRequest( self.get_code( data ), self.get_body( data ) )
 
     def command(self, url, command="GET", args=None):
         if (command == "POST"):
@@ -83,6 +118,6 @@ if __name__ == "__main__":
         help()
         sys.exit(1)
     elif (len(sys.argv) == 3):
-        print client.command( sys.argv[1], sys.argv[2] )
+        print client.command( sys.argv[2], sys.argv[1] )
     else:
         print client.command( command, sys.argv[1] )    
